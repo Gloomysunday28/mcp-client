@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <textarea>
+
+  </textarea>
+  <p></p>
+  <script>
+    const textarea = document.querySelector('textarea')
+    const p = document.querySelector('p')
+    function change(event) {
+      const { value } = event.target
+      fetch('/get_weather', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: value
+        }),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }).then(res => res.json()).then(res => {
+        console.log('[ res ] >', res)
+        p.innerHTML = res.data
+      })
+    }
+    textarea.onchange = change
+  </script>
+</body>
+</html>
