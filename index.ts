@@ -28,6 +28,10 @@ const sse = new (class RequestSSE {
       method,
       body: params as string,
       signal: abortController.signal,
+      headers: {
+        'Authorization': 'Bearer sk-W0rpStc95T7JVYVwDYc29IyirjtpPPby6SozFMQr17m8KWeo',
+        'Content-Type': 'application/json'
+      }
     }).then(async (response) => {
       const contentType = response.headers.get('Content-Type');
       if (contentType !== 'text/event-stream') {
@@ -44,12 +48,13 @@ const sse = new (class RequestSSE {
 
       while (true) {
         const { done, value } = await reader.read();
+        console.log('[ value ] >', value)
         if (done) {
           return {
             ...responseValue,
             data: {
               result: {
-                data: streamCallback?.(null, true),
+                data: streamCallback?.(decoder.decode(value, { stream: true }), true),
               },
             },
           };
@@ -188,7 +193,7 @@ class MCPClient {
     }
   }
 
-  async processQuery(query: string) {
+  async processQuery(query: string, callback?: (message: string, isDone?: boolean) => void) {
     const messages: any[] = [
       {
         role: "system",
@@ -229,7 +234,6 @@ class MCPClient {
       const { tool_calls } = response?.data?.choices?.[0].message
       console.log('[ content ] >', response?.data?.choices?.[0], tool_calls)
       const finalText = [];
-      const toolResults = [];
       for (const content of tool_calls) {
         if (content.type === "text") {
           finalText.push(content.text);
@@ -245,31 +249,44 @@ class MCPClient {
           // 使用类型断言来确保 content 是数组类型
           const toolResult = JSON.parse((result.content as any[])?.[0]?.text)
 
-          messages.push({
+          const nextMessage = ({
             role: "system",
             content: `
-              ## 你是一个精通英文转中文的资深翻译官
-              ## 你的任务就是把英文翻译成中文
+              ## 你是一个精通中英文的资深天气专家和专业的代码专家
+              ## 你的任务就是把把以下格式的数据转换成人文语言
               ## few-shot
-              1. [{ date: '2025-03-21', temperature: '18.95', conditions: 'clear sky' }] ->  杭州的天气信息: 日期是2025-03-21，温度是18.95，天气是晴天。
-              2. [{ date: '2025-03-22', temperature: '18.95', conditions: 'clear sky' }, { date: '2025-03-22', temperature: '10.95', conditions: 'clear sky' }] 
+              1. [{ date: '2025-03-21', temperature: '18.95', conditions: 'clear sky' }]
                  转换成
-                 - 杭州的天气信息: 日期是2025-03-21，温度是18.95，天气是晴天。
-                 - 杭州的天气信息: 日期是2025-03-22，温度是10.95，天气是晴天。
+                 杭州的天气信息: 日期是2025-03-21，温度是18.95，天气是晴天。
+              2. [{ date: '2025-03-21', temperature: '18.95', conditions: 'clear sky' }, { date: '2025-03-22', temperature: '10.95', conditions: 'clear sky' }] 
+                 转换成
+                 杭州的天气信息: 日期是2025-03-21，温度是18.95，天气是晴天。
+                 杭州的天气信息: 日期是2025-03-22，温度是10.95，天气是晴天。
               你拥有的数据如下
               ${JSON.stringify(toolResult)}
             `
           });
           console.log('[ sse - start ] >')
-          const response = await sse.post('', {
+          //         '',
+          //   {
+          //     temperature: 0.5,
+          //     channel: 'azure',
+          //     model: 'gpt-4o-mini',
+          //     useStream: false,
+          //     maxTokens: 1024,
+          //     ...params,
+          //   },
+          //   { timeout: 300000, signal },
+          // ); 
+          await sse.post('https://api.suanli.cn/v1/chat/completions', {
             model: "free:QwQ-32B",
             max_tokens: 2000,
-            messages,
+            messages: [nextMessage],
             stream: true
           }, {
-            streamCallback(data: any) {
-              console.log('[ data ] >', data)
-            }
+            streamCallback(data: any, isDone: boolean) {
+              callback?.(data, isDone)
+            },
           });
           // console.log('[ response ] >', response)
           // const { content: rContent } = response?.data?.choices?.[0].message
@@ -282,7 +299,7 @@ class MCPClient {
         }
       }
     }).catch((err: any) => {
-      console.log('[ err ] >', err)
+      console.log('[ err ] >', err.message)
     })
   }
 
@@ -318,7 +335,7 @@ class MCPClient {
 const mcpClient = new MCPClient();
 async function main() {
   try {
-    await mcpClient.connectToServer(process.argv[2]);
+    await mcpClient.connectToSSEServer(process.argv[2]);
     // await mcpClient.chatLoop();
   } finally {
     // await mcpClient.cleanup();
@@ -327,15 +344,22 @@ async function main() {
 }
 
 main()
-app.post('/get_weather', async (req, res) => {
+app.get('/get_weather', async (req, res) => {
   // res.send('Hello, Express with ESM!');
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Transfer-Encoding', 'chunked'); // 确保传输是分块的
   res.removeHeader('Content-Length');
+  console.log('[ params ] >', String(req.query.message || ''))
   try {
-    return await mcpClient.processQuery(req.body.message);
+    return mcpClient.processQuery(String(req.query.message || ''), (message: any, isDone) => {
+      if (isDone) {
+        res.end()
+      } else {
+        res.write(`data: ${JSON.stringify(message)}\n\n`);
+      }
+    });
 
     // const data =
     //   // const data = '123'

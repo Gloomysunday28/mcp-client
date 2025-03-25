@@ -6,27 +6,52 @@
   <title>Document</title>
 </head>
 <body>
-  <textarea>
+  <textarea style="width: 100%;">
 
   </textarea>
-  <p></p>
+  <div style="color: blue;">
+    <span style="color: gray; font-size: 12px"></span>
+    <p></p>
+  </div>
   <script>
     const textarea = document.querySelector('textarea')
     const p = document.querySelector('p')
+    const span = document.querySelector('span')
+    var isthinking = false
     function change(event) {
       const { value } = event.target
-      fetch('/get_weather', {
-        method: 'POST',
-        body: JSON.stringify({
-          message: value
-        }),
-        headers: {
-          'Content-Type': 'application/json'
+      new EventSource('/get_weather?message=' + value).onmessage = function (event) {
+        const data = JSON.parse(event.data)
+        console.log('[ event ] >', event, data)
+        const content = data.choices?.[0]?.delta?.content
+        console.log('[ isthinking ] >', isthinking)
+        if (isthinking) {
+          span.innerHTML += content || ''
+        } else {
+          p.innerHTML += content || ''
         }
-      }).then(res => res.json()).then(res => {
-        console.log('[ res ] >', res)
-        p.innerHTML = res.data
-      })
+        console.log('[ content ] >', content, content?.includes('<think>'))
+          if (content?.includes('<think>')) {
+            console.log('[ 1231231 ] >', 1231231)
+            isthinking = true
+          }
+
+          if (content?.includes('</think>')) {
+            isthinking = false
+          }
+      }
+      // fetch('/get_weather', {
+      //   method: 'POST',
+      //   body: JSON.stringify({
+      //     message: value
+      //   }),
+      //   headers: {
+      //     'Content-Type': 'text/event-stream'
+      //   }
+      // }).then(res => res.json()).then(res => {
+      //   console.log('[ res ] >', res)
+      //   p.innerHTML = res.data
+      // })
     }
     textarea.onchange = change
   </script>
